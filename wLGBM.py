@@ -48,6 +48,7 @@ class wLGBM(object):
             model_name: str = "wLGBM1",
             feat_prefix: str = "lbl_feat",
             multiout_mode : str = "chain",
+            use_multiout: bool = False,
             model_param: dict = None,
             data_param: dict = None,
             train_param: dict = None,
@@ -78,7 +79,7 @@ class wLGBM(object):
         self.data_param = data_param
         self.model_param = model_param
         self.train_param = train_param
-        self.use_multiout = None
+        self.use_multiout = use_multiout
         self.objective = None
         self.print_info = print_info
 
@@ -296,6 +297,7 @@ class wLGBM(object):
         # gbrt_unit = lgb.LGBMRegressor(**model_param)
         multiout_mode = multiout_mode if multiout_mode is not None \
                 else self.multiout_mode
+        print(f"Use {multiout_mode} mode to build up multioutput model.")
         if multiout_mode == "chain":
             exec("from sklearn.multioutput import RegressorChain")
             self.model = RegressorChain(base_estimator=core_model,
@@ -378,7 +380,8 @@ class wLGBM(object):
                 scores.update({method: eval(method)(preds, truth)})
             elif hasattr(method, "__call__") and hasattr(method, "__name__"):
                 scores.update({method.__name__: method(preds, truth)})
-        # print(f"metric scores:\n {scores}")
+        if self.print_info:
+            print(f"metric scores:\n {scores}")
         return scores
 
 
@@ -567,8 +570,10 @@ if __name__ == "__main__":
         "objective": "regression",
         "boosting_type": "gbdt",
         "num_iterations": 500,
-        "learning_rate": 0.1,
-        "num_leaves": np.floor((2**6)*0.6),
+        "learning_rate": 0.05,
+        # "learning_rate":
+        #     lambda iter_n: 0.1 * (0.99 ** iter_n),
+        "num_leaves": int(np.floor((2**6)*0.6)),
         "num_threads": 8,
         "seed": 42,
         # Learning Control Params
@@ -589,6 +594,7 @@ if __name__ == "__main__":
         "verbose": -1,
         # Metric Params
         "metric": ["l1", "l2"],
+        "importance_type": "gain",
     }
 
     data_param = {
@@ -597,17 +603,13 @@ if __name__ == "__main__":
     }
 
     train_param = {
-        "feature_name": feats_col,
-        "categorical_feature": cat_feat_cols,
-        "keep_training_booster": True,
-        "learning_rate":
-            lambda iter_n: model_param.get(
-                    "learning_rate", 0.1) * (0.99 ** iter_n),
-        "importance_type": "gain",
+        # "feature_name": feats_col,
+        # "categorical_feature": cat_feat_cols,
+        # "keep_training_booster": True,
     }
 
     input_len = 7
-    predict_len = 3
+    predict_len = 1
 
     wlgbm = wLGBM(data_set=data,
         labels=[label_col],
@@ -618,6 +620,7 @@ if __name__ == "__main__":
         model_name=f"wLGBM_bike_sharing_{input_len}_{predict_len}",
         feat_prefix="lbl_feat",
         multiout_mode="standalone",
+        use_multiout=True,
         model_param=model_param,
         data_param=data_param,
         train_param=train_param
@@ -649,7 +652,7 @@ if __name__ == "__main__":
     wlgbm.build_core_model()
     wlgbm.build_model()
     wlgbm.train_model()
-    scores = wlgbm.metrics(wlgbm.predict())
+    scores = wlgbm.metrics(wlgbm.predict(), is_core_model=False)
     print(f"{wlgbm.model_name} performance:")
     for name, value in socres.items():
         print(f"{name}: {value}")
